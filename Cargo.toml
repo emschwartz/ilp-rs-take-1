@@ -1,0 +1,7 @@
+[package]
+name = "ilp"
+version = "0.1.0"
+authors = ["Evan Schwartz <evan.mark.schwartz@gmail.com>"]
+
+[dependencies]
+clap = "2.26.0"
