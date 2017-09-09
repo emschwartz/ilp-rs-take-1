@@ -7,6 +7,7 @@ extern crate serde_json;
 use clap::{App, SubCommand, Arg};
 
 mod spsp;
+mod ilqp;
 
 fn main() {
     let matches = App::new("spsp")
