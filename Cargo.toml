@@ -5,3 +5,8 @@ authors = ["Evan Schwartz <evan.mark.schwartz@gmail.com>"]
 
 [dependencies]
 clap = "2.26.0"
+quick-error = "1.2.1"
+reqwest = "0.7.3"
+serde = "1.0.12"
+serde_derive = "1.0.12"
+serde_json = "1.0.3"

@@ -43,11 +43,11 @@ fn main() {
             if matches.is_present("source_amount") {
                 let source_amount = u64::from_str_radix(matches.value_of("source_amount").unwrap(), 10).unwrap();
                 let destination_amount = spsp::quote_source(receiver, source_amount);
-                println!("{}", destination_amount)
+                println!("{}", destination_amount.unwrap())
             } else {
                 let destination_amount = u64::from_str_radix(matches.value_of("destination_amount").unwrap(), 10).unwrap();
                 let source_amount = spsp::quote_destination(receiver, destination_amount);
-                println!("{}", source_amount)
+                println!("{}", source_amount.unwrap())
             }
         },
         Some("pay") => {
@@ -62,13 +62,63 @@ fn main() {
     }
 }
 
+extern crate reqwest;
+extern crate serde_json;
+#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate quick_error;
+
 pub mod spsp {
-    pub fn quote_source(receiver: &str, source_amount: u64) -> u64 {
-        10
+    use reqwest;
+
+    quick_error! {
+        #[derive(Debug)]
+        pub enum Error {
+            Reqwest(err: reqwest::Error) {
+                description(err.description())
+                from()
+            }
+        }
     }
 
-    pub fn quote_destination(receiver: &str, destination_amount: u64) -> u64 {
-        10
+    #[derive(Debug, Deserialize)]
+    struct LedgerInfo {
+        currency_code: String,
+        // TODO can scale be negative?
+        currency_scale: u32,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ReceiverInfo {
+        name: String,
+        image_url: String,
+        identifier: String,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct SpspReceiver {
+        destination_account: String,
+        shared_secret: String,
+        maximum_destination_amount: String,
+        minimum_destination_amount: String,
+        ledger_info: LedgerInfo,
+        receiver_info: ReceiverInfo,
+    }
+
+    fn query(receiver: &str) -> Result<SpspReceiver, Error> {
+        // TODO actually use webfinger
+        let resp = &mut reqwest::get(receiver)?;
+        let spspDetails: SpspReceiver = resp.json()?;
+        Ok(spspDetails)
+    }
+
+    pub fn quote_source(receiver: &str, source_amount: u64) -> Result<u64, Error> {
+        let spspDetails = query(receiver)?;
+        println!("{:?}", spspDetails);
+        Ok(10)
+    }
+
+    pub fn quote_destination(receiver: &str, destination_amount: u64) -> Result<u64, Error> {
+        Ok(10)
     }
 
     pub fn pay(receiver: &str, source_amount: u64, destination_amount: u64) -> () {
