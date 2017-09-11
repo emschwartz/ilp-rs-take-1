@@ -4,11 +4,15 @@ extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate quick_error;
 extern crate ilp_packet;
+extern crate rand;
+extern crate base64;
+extern crate ring;
 
 use clap::{App, SubCommand, Arg};
 
 mod spsp;
 mod ilqp;
+mod psk;
 
 fn main() {
     let matches = App::new("spsp")
@@ -63,7 +67,10 @@ fn main() {
             let receiver = matches.value_of("receiver").unwrap();
             let source_amount: f64 = matches.value_of("source_amount").unwrap().parse().unwrap();
             let destination_amount: f64 = matches.value_of("destination_amount").unwrap().parse().unwrap();
-            spsp::pay(receiver, source_amount, destination_amount)
+            match spsp::pay(receiver, source_amount, destination_amount) {
+                Ok(_result) => println!("Sent payment"),
+                Err(err) => println!("Error sending payment: {:?}", err),
+            }
         },
         Some(command) => println!("unknown command: {}", command),
         None => println!("command is required")

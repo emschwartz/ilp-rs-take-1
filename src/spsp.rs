@@ -1,5 +1,7 @@
 use reqwest;
 use ilqp;
+use psk;
+use base64;
 
 quick_error! {
     #[derive(Debug)]
@@ -78,6 +80,16 @@ pub fn quote_destination(receiver: &str, destination_amount: f64) -> Result<f64,
     Ok(int_to_float(source_amount, source_scale))
 }
 
-pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> () {
-    println!("Send payment to {} with source amount: {} and destination amount: {}", receiver, source_amount, destination_amount);
+pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> Result<(), Error> {
+    println!("Send payment to {} with source amount {} and destination amount {}", receiver, source_amount, destination_amount);
+    let spsp_details = query(receiver)?;
+    println!("Got receiver details: {:?}", spsp_details);
+    let shared_secret = base64::decode_config(&spsp_details.shared_secret, base64::URL_SAFE_NO_PAD).unwrap();
+    let destination_amount = float_to_int(destination_amount, spsp_details.ledger_info.currency_scale);
+    let (packet, condition) = psk::create_packet_and_condition(
+        &shared_secret,
+        &spsp_details.destination_account,
+        destination_amount);
+    println!("Created packet: {:?} and condition: {:?}", packet, condition);
+    Ok(())
 }
