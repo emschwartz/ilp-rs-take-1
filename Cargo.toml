@@ -5,6 +5,7 @@ authors = ["Evan Schwartz <evan.mark.schwartz@gmail.com>"]
 
 [dependencies]
 clap = "2.26.0"
+ilp-packet = { path = "../ilp-packet" }
 quick-error = "1.2.1"
 reqwest = "0.7.3"
 serde = "1.0.12"

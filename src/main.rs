@@ -3,6 +3,7 @@ extern crate reqwest;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate quick_error;
+extern crate ilp_packet;
 
 use clap::{App, SubCommand, Arg};
 
@@ -48,11 +49,11 @@ fn main() {
             let matches = matches.subcommand_matches("quote").unwrap();
             let receiver = matches.value_of("receiver").unwrap();
             if matches.is_present("source_amount") {
-                let source_amount = u64::from_str_radix(matches.value_of("source_amount").unwrap(), 10).unwrap();
+                let source_amount: f64 = matches.value_of("source_amount").unwrap().parse().unwrap();
                 let destination_amount = spsp::quote_source(receiver, source_amount);
                 println!("{}", destination_amount.unwrap())
             } else {
-                let destination_amount = u64::from_str_radix(matches.value_of("destination_amount").unwrap(), 10).unwrap();
+                let destination_amount: f64 = matches.value_of("destination_amount").unwrap().parse().unwrap();
                 let source_amount = spsp::quote_destination(receiver, destination_amount);
                 println!("{}", source_amount.unwrap())
             }
@@ -60,8 +61,8 @@ fn main() {
         Some("pay") => {
             let matches = matches.subcommand_matches("pay").unwrap();
             let receiver = matches.value_of("receiver").unwrap();
-            let source_amount = u64::from_str_radix(matches.value_of("source_amount").unwrap(), 10).unwrap();
-            let destination_amount = u64::from_str_radix(matches.value_of("destination_amount").unwrap(), 10).unwrap();
+            let source_amount: f64 = matches.value_of("source_amount").unwrap().parse().unwrap();
+            let destination_amount: f64 = matches.value_of("destination_amount").unwrap().parse().unwrap();
             spsp::pay(receiver, source_amount, destination_amount)
         },
         Some(command) => println!("unknown command: {}", command),

@@ -6,11 +6,11 @@ quick_error! {
     pub enum Error {
         Reqwest(err: reqwest::Error) {
             description(err.description())
-                from()
+            from()
         }
-        Reqwest(err: ilqp::Error) {
+        Ilqp(err: ilqp::Error) {
             description(err.description())
-                from()
+            from()
         }
     }
 }
@@ -61,7 +61,8 @@ pub fn quote_source(receiver: &str, source_amount: f64) -> Result<f64, Error> {
     // TODO shift by scale from ledger plugin
     let source_scale = 1;
     let source_amount = float_to_int(source_amount, source_scale);
-    let destination_amount = ilqp::quote_source(&spsp_details.destination_account, source_amount)?;
+    let destination_hold_duration = 10000;
+    let destination_amount = ilqp::quote_source(&destination_account, source_amount, destination_hold_duration)?;
     let destination_amount = int_to_float(destination_amount, spsp_details.ledger_info.currency_scale);
     Ok(destination_amount)
 }
@@ -70,12 +71,13 @@ pub fn quote_destination(receiver: &str, destination_amount: f64) -> Result<f64,
     let spsp_details = query(receiver)?;
     let destination_account = spsp_details.destination_account;
     let destination_amount = float_to_int(destination_amount, spsp_details.ledger_info.currency_scale);
-    let source_amount = ilqp::quote_destination(&spsp_details.destination_account, destination_amount)?;
+    let destination_hold_duration = 10000;
+    let source_amount = ilqp::quote_destination(&destination_account, destination_amount, destination_hold_duration)?;
     // TODO shift by scale from ledger plugin
     let source_scale = 1;
     Ok(int_to_float(source_amount, source_scale))
 }
 
-pub fn pay(receiver: &str, source_amount: u64, destination_amount: u64) -> () {
+pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> () {
     println!("Send payment to {} with source amount: {} and destination amount: {}", receiver, source_amount, destination_amount);
 }
