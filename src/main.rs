@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate reqwest;
+extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate quick_error;
@@ -7,12 +8,15 @@ extern crate ilp_packet;
 extern crate rand;
 extern crate base64;
 extern crate ring;
+extern crate uuid;
+extern crate chrono;
 
 use clap::{App, SubCommand, Arg};
 
 mod spsp;
 mod ilqp;
 mod psk;
+mod plugin;
 
 fn main() {
     let matches = App::new("spsp")

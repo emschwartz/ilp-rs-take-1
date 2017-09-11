@@ -25,7 +25,7 @@ fn packet_to_preimage(shared_secret: &[u8], packet: &[u8]) -> Vec<u8> {
 pub fn create_packet_and_condition(shared_secret: &[u8], destination_account: &str, destination_amount: u64) -> (Vec<u8>, Vec<u8>) {
     let nonce = get_psk_token();
     // TODO support encryption and memos
-    let data = format!("PSK/1.0\nNonce: {}\nEncryption: none\n\n", nonce).into_bytes();
+    let data = format!("PSK/1.0\nNonce: {}\nEncryption: none\n\n\n\n", nonce).into_bytes();
     let packet = ilp_packet::packet::IlpPayment {
         account: destination_account.to_string(),
         amount: destination_amount,
