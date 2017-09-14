@@ -83,16 +83,19 @@ trait Serializable<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error>;
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ProtocolData {
     protocol_name: String,
     content_type: ContentType,
     data: Vec<u8>,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum PacketContents {
     Prepare(Prepare),
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ClpPacket {
     packet_type: PacketType,
     request_id: u32,
@@ -135,6 +138,7 @@ impl Serializable<ClpPacket> for ClpPacket {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Prepare {
     transfer_id: [u8; 16],
     amount: u64,
@@ -181,6 +185,24 @@ mod clp_prepare {
     use super::*;
 
     #[test]
+    fn serialize_and_deserialize() {
+        let protocol_data: Vec<ProtocolData> = vec![];
+        let expected = ClpPacket {
+            packet_type: PacketType::Prepare,
+            request_id: 1,
+            data: PacketContents::Prepare(Prepare {
+                transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
+                amount: 1000,
+                execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
+                expires_at: Utc.timestamp(1503919920, 0),
+                protocol_data,
+            })
+        };
+        let actual = ClpPacket::from_bytes(&expected.to_bytes().unwrap()).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn serialize_without_protocol_data() {
         let protocol_data: Vec<ProtocolData> = vec![];
         let prepare1 = ClpPacket {
@@ -197,6 +219,25 @@ mod clp_prepare {
         let actual = prepare1.to_bytes().unwrap();
         let expected = vec![4, 0, 0, 0, 1, 129, 143, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 0, 0, 0, 0, 0, 0, 3, 232, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 19, 50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90];
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn deserialize_without_protocol_data() {
+        let protocol_data: Vec<ProtocolData> = vec![];
+        let expected = ClpPacket {
+            packet_type: PacketType::Prepare,
+            request_id: 1,
+            data: PacketContents::Prepare(Prepare {
+                transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
+                amount: 1000,
+                execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
+                expires_at: Utc.timestamp(1503919920, 0),
+                protocol_data,
+            })
+        };
+        let actual = ClpPacket::from_bytes(&[4, 0, 0, 0, 1, 129, 143, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 0, 0, 0, 0, 0, 0, 3, 232, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 19, 50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90]);
+        println!("{:?}", actual);
+        assert_eq!(actual.unwrap(), expected);
     }
 }
 
