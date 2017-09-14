@@ -1,5 +1,15 @@
 use serde::{Serializer, Deserialize, Deserializer};
 use base64;
+use ilp_packet::oer;
+
+// TODO turn plugin interface into trait
+
+quick_error! {
+    #[derive(Debug)]
+    pub enum Error {
+
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,3 +33,18 @@ pub fn as_base64<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
     serializer.serialize_str(&base64::encode_config(buffer.as_ref(), base64::URL_SAFE_NO_PAD))
 }
 
+pub struct Plugin {
+
+}
+
+impl Plugin {
+    pub fn connect() -> () {
+
+    }
+
+    pub fn send_transfer(transfer: Transfer) -> Result<(), Error> {
+
+        Ok(())
+    }
+
+}

@@ -10,6 +10,7 @@ extern crate base64;
 extern crate ring;
 extern crate uuid;
 extern crate chrono;
+extern crate byteorder;
 
 use clap::{App, SubCommand, Arg};
 
@@ -17,6 +18,7 @@ mod spsp;
 mod ilqp;
 mod psk;
 mod plugin;
+mod clp;
 
 fn main() {
     let matches = App::new("spsp")

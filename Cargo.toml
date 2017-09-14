@@ -5,6 +5,7 @@ authors = ["Evan Schwartz <evan.mark.schwartz@gmail.com>"]
 
 [dependencies]
 base64 = "0.6.0"
+byteorder = "1.0.0"
 chrono = "0.4.0"
 clap = "2.26.0"
 ilp-packet = { path = "../ilp-packet" }
