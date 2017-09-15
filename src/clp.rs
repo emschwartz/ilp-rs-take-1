@@ -5,9 +5,21 @@ use ilp_packet::oer;
 use std::io::{Cursor};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use chrono;
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{DateTime, Utc, TimeZone, NaiveDateTime};
+use chrono::format::ParseError;
 
 const DATE_TIME_FORMAT: &'static str = "%Y%m%d%H%M%S%.3fZ";
+
+fn datetime_to_bytes(date: DateTime<Utc>) -> Vec<u8> {
+    date.naive_utc().format(DATE_TIME_FORMAT).to_string().into_bytes()
+}
+
+fn datetime_from_bytes(bytes: Vec<u8>) -> Result<DateTime<Utc>, Error> {
+    let date_string = String::from_utf8(bytes)?;
+    let utc_date = NaiveDateTime::parse_from_str(&date_string, &DATE_TIME_FORMAT)?;
+    let date = DateTime::<Utc>::from_utc(utc_date, Utc);
+    Ok(date)
+}
 
 quick_error! {
     #[derive(Debug)]
@@ -155,8 +167,7 @@ impl Serializable<Prepare> for Prepare {
         let amount = reader.read_u64::<BigEndian>()?;
         let mut execution_condition = [0u8; 32];
         reader.read_exact(&mut execution_condition)?;
-        let expires_at = String::from_utf8(oer::read_var_octet_string(&bytes[reader.position() as usize..])?.to_vec())?;
-        let expires_at = DateTime::parse_from_str(&expires_at, DATE_TIME_FORMAT)?.with_timezone(&Utc);
+        let expires_at = datetime_from_bytes(oer::read_var_octet_string(&bytes[reader.position() as usize..])?.to_vec())?;
         // TODO read protocol data
         let protocol_data: Vec<ProtocolData> = Vec::new();
         Ok(Prepare {
@@ -173,11 +184,46 @@ impl Serializable<Prepare> for Prepare {
         bytes.write_all(&self.transfer_id)?;
         bytes.write_u64::<BigEndian>(self.amount)?;
         bytes.write_all(&self.execution_condition)?;
-        let expires_at = self.expires_at.naive_utc().format(DATE_TIME_FORMAT).to_string();
-        oer::write_var_octet_string(&mut bytes, &expires_at.into_bytes())?;
+        let expires_at = datetime_to_bytes(self.expires_at);
+        oer::write_var_octet_string(&mut bytes, &expires_at)?;
         // TODO add protocol data
         Ok(bytes)
     }
+}
+#[cfg(test)]
+mod generalized_time {
+    use super::*;
+
+    #[test]
+    fn serialize() {
+        let date1 = Utc.timestamp(0, 0);
+        let actual1 = datetime_to_bytes(date1);
+        let expected1 = [ 49, 57, 55, 48, 48, 49, 48, 49, 48, 48, 48, 48, 48, 48, 46, 48, 48, 48, 90 ];
+        assert_eq!(actual1, expected1);
+
+        let date2 = Utc.timestamp(1505444840, 870000000);
+        let actual2 = datetime_to_bytes(date2);
+        let expected2 = [ 50, 48, 49, 55, 48, 57, 49, 53, 48, 51, 48, 55, 50, 48, 46, 56, 55, 48, 90 ];
+        assert_eq!(actual2, expected2);
+    }
+
+    #[test]
+    fn deserialize() {
+        let expected1 = Utc.timestamp(0, 0);
+        let actual1 = datetime_from_bytes(vec![ 49, 57, 55, 48, 48, 49, 48, 49, 48, 48, 48, 48, 48, 48, 46, 48, 48, 48, 90 ]).unwrap();
+        assert_eq!(actual1, expected1);
+
+        let expected2 = Utc.timestamp(1505444840, 870000000);
+        let actual2 = datetime_from_bytes(vec![ 50, 48, 49, 55, 48, 57, 49, 53, 48, 51, 48, 55, 50, 48, 46, 56, 55, 48, 90 ]).unwrap();
+        assert_eq!(actual2, expected2);
+
+        let actual3 = datetime_from_bytes(vec![50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90 ]).unwrap();
+        let expected3 = datetime_from_bytes(vec![19, 50, 48, 49, 55, 48, 56, 50, 56, 49, 49, 51, 50, 48, 48, 46, 48, 48, 48, 90]).unwrap();
+        assert_eq!(actual3, expected3);
+
+
+    }
+
 }
 
 #[cfg(test)]
@@ -194,7 +240,7 @@ mod clp_prepare {
                 transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
                 amount: 1000,
                 execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
-                expires_at: Utc.timestamp(1503919920, 0),
+                expires_at: DateTime::parse_from_rfc3339("2017-08-28T09:32:00.000Z").unwrap().with_timezone(&Utc),
                 protocol_data,
             })
         };
@@ -212,7 +258,7 @@ mod clp_prepare {
                 transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
                 amount: 1000,
                 execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
-                expires_at: Utc.timestamp(1503919920, 0),
+                expires_at: DateTime::parse_from_rfc3339("2017-08-28T09:32:00.000Z").unwrap().with_timezone(&Utc),
                 protocol_data,
             })
         };
@@ -231,7 +277,7 @@ mod clp_prepare {
                 transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
                 amount: 1000,
                 execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
-                expires_at: Utc.timestamp(1503919920, 0),
+                expires_at: DateTime::parse_from_rfc3339("2017-08-28T09:32:00.000Z").unwrap().with_timezone(&Utc),
                 protocol_data,
             })
         };
