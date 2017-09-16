@@ -3,7 +3,7 @@ use std::cmp;
 use std::string;
 use std::ascii::AsciiExt;
 use std::io::{Read, Write};
-use ilp_packet::oer;
+use ilp_packet::oer::{ReadOerExt, WriteOerExt};
 use std::io::{Cursor};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use chrono;
@@ -93,6 +93,7 @@ impl From<u8> for PacketType {
 }
 
 trait Serializable<T> {
+    // TODO rethink whether bytes should be mutable so that the pointer advanced automatically
     fn from_bytes(bytes: &[u8]) -> Result<T, Error>;
     fn to_bytes(&self) -> Result<Vec<u8>, Error>;
 }
@@ -106,17 +107,17 @@ pub struct ProtocolData {
 
 impl ProtocolData {
     fn from_bytes_get_length(bytes: &[u8]) -> Result<(ProtocolData, u64), Error> {
+        // TODO just read from a mutable reference so we don't need to manually work with the
+        // num_bytes_read
         let mut reader = Cursor::new(bytes);
-        let protocol_name_bytes = oer::read_var_octet_string(&bytes)?;
+        let protocol_name_bytes = reader.read_var_octet_string()?;
         let protocol_name = String::from_utf8(protocol_name_bytes.to_vec())?;
-        // TODO so janky! make the oer::read_var... advance the cursor instead of adding 1 to the
-        // position here
-        reader.set_position(1 + protocol_name_bytes.len() as u64);
+        println!("protocol_name {}", protocol_name);
+
         let content_type = ContentType::from(reader.read_u8()?);
-        let data = oer::read_var_octet_string(&bytes[reader.position() as usize..])?.to_vec();
-        // TODO so janky! make the oer::read_var... advance the cursor instead of adding 1 to the
-        // position here
-        let num_bytes_read = reader.position() + 1 + data.len() as u64;
+        println!("content_type {:?}", content_type);
+        let data = reader.read_var_octet_string()?;
+        let num_bytes_read = reader.position() as u64;
         Ok((ProtocolData {
             protocol_name,
             content_type,
@@ -136,9 +137,9 @@ impl Serializable<ProtocolData> for ProtocolData {
         if !self.protocol_name.as_str().is_ascii() {
             return Err(Error::Invalid("protocol_name must be ASCII"))
         }
-        oer::write_var_octet_string(&mut bytes, &self.protocol_name.as_bytes().to_vec())?;
+        bytes.write_var_octet_string(self.protocol_name.as_bytes())?;
         bytes.write_u8(self.content_type.clone() as u8)?;
-        oer::write_var_octet_string(&mut bytes, &self.data)?;
+        bytes.write_var_octet_string(&self.data)?;
         Ok(bytes)
     }
 }
@@ -161,12 +162,14 @@ fn write_protocol_data(bytes: &mut Vec<u8>, protocol_data: &Vec<ProtocolData>) -
 
 fn read_protocol_data(bytes: &[u8]) -> Result<Vec<ProtocolData>, Error> {
     let mut reader = Cursor::new(bytes);
+    println!("read protocol data");
     let length_prefix_length_prefix = reader.read_u8()?;
     println!("length prefix length {}", length_prefix_length_prefix);
     let length_prefix = reader.read_uint::<BigEndian>(length_prefix_length_prefix as usize)?;
     let mut data: Vec<ProtocolData> = Vec::new();
 
     let mut position = reader.position();
+    println!("before reading protocol data {:?}", reader);
     for _i in 0..length_prefix {
         let (protocol_data, num_bytes_read) = ProtocolData::from_bytes_get_length(&bytes[position as usize..])?;
         position += num_bytes_read;
@@ -192,13 +195,14 @@ impl Serializable<ClpPacket> for ClpPacket {
         let mut reader = Cursor::new(bytes);
         let packet_type = PacketType::from(reader.read_u8()?);
         let request_id = reader.read_u32::<BigEndian>()?;
-        // TODO use read_to_end
-        let content_bytes = oer::read_var_octet_string(&bytes[reader.position() as usize..])?;
+        println!("packet type, request id {:?} {:?}", packet_type, request_id);
+        // TODO don't copy content_bytes
+        let content_bytes = reader.read_var_octet_string()?;
         let data: PacketContents = match packet_type {
             //PacketType::Ack => Ack::from_bytes(content_bytes)?,
             //PacketType::Response => Response::from_bytes(content_bytes)?,
             //PacketType::Error => Error::from_bytes(content_bytes)?,
-            PacketType::Prepare => PacketContents::Prepare(Prepare::from_bytes(content_bytes)?),
+            PacketType::Prepare => PacketContents::Prepare(Prepare::from_bytes(&content_bytes)?),
             //PacketType::Fulfill => Fulfill::from_bytes(content_bytes)?,
             //PacketType::Reject => Reject::from_bytes(content_bytes)?,
             //PacketType::Message => Message::from_bytes(content_bytes)?,
@@ -218,7 +222,7 @@ impl Serializable<ClpPacket> for ClpPacket {
         let content_bytes = match self.data {
             PacketContents::Prepare(ref contents) => contents,
         }.to_bytes()?;
-        oer::write_var_octet_string(&mut bytes, &content_bytes)?;
+        bytes.write_var_octet_string(&content_bytes)?;
         Ok(bytes)
     }
 }
@@ -237,15 +241,17 @@ impl Serializable<Prepare> for Prepare {
         let mut reader = Cursor::new(bytes);
         let mut transfer_id = [0u8; 16];
         reader.read_exact(&mut transfer_id)?;
+        println!("transfer_id {:?}", transfer_id);
         let amount = reader.read_u64::<BigEndian>()?;
+        println!("amount {:?}", amount);
         let mut execution_condition = [0u8; 32];
+        println!("execution_condition {:?}", execution_condition);
         reader.read_exact(&mut execution_condition)?;
-        let expires_at_bytes = oer::read_var_octet_string(&bytes[reader.position() as usize..])?.to_vec();
+        let expires_at_bytes = reader.read_var_octet_string()?;
         let expires_at_len = expires_at_bytes.len();
         let expires_at = datetime_from_bytes(expires_at_bytes)?;
-        // TODO read protocol data
-        let protocol_data_bytes = &bytes[(reader.position() + 1 + expires_at_len as u64) as usize..];
-        println!("protocol data bytes {:?}", protocol_data_bytes);
+        println!("expires_at {:?}", expires_at);
+        let protocol_data_bytes = &bytes[reader.position() as usize..];
         let protocol_data = read_protocol_data(protocol_data_bytes)?;
         Ok(Prepare {
             transfer_id,
@@ -262,7 +268,7 @@ impl Serializable<Prepare> for Prepare {
         bytes.write_u64::<BigEndian>(self.amount)?;
         bytes.write_all(&self.execution_condition)?;
         let expires_at = datetime_to_bytes(self.expires_at);
-        oer::write_var_octet_string(&mut bytes, &expires_at)?;
+        bytes.write_var_octet_string(&expires_at)?;
         write_protocol_data(&mut bytes, &self.protocol_data)?;
         Ok(bytes)
     }
