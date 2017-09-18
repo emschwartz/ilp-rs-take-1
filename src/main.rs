@@ -18,7 +18,7 @@ mod spsp;
 mod ilqp;
 mod psk;
 mod plugin;
-mod clp;
+mod btp_packet;
 
 fn main() {
     let matches = App::new("spsp")

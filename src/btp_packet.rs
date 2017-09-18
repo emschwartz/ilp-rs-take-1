@@ -184,14 +184,14 @@ pub enum PacketContents {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ClpPacket {
+pub struct BtpPacket {
     packet_type: PacketType,
     request_id: u32,
     data: PacketContents,
 }
 
-impl Serializable<ClpPacket> for ClpPacket {
-    fn from_bytes(bytes: &[u8]) -> Result<ClpPacket, Error> {
+impl Serializable<BtpPacket> for BtpPacket {
+    fn from_bytes(bytes: &[u8]) -> Result<BtpPacket, Error> {
         let mut reader = Cursor::new(bytes);
         let packet_type = PacketType::from(reader.read_u8()?);
         let request_id = reader.read_u32::<BigEndian>()?;
@@ -199,7 +199,6 @@ impl Serializable<ClpPacket> for ClpPacket {
         // TODO don't copy content_bytes
         let content_bytes = reader.read_var_octet_string()?;
         let data: PacketContents = match packet_type {
-            //PacketType::Ack => Ack::from_bytes(content_bytes)?,
             //PacketType::Response => Response::from_bytes(content_bytes)?,
             //PacketType::Error => Error::from_bytes(content_bytes)?,
             PacketType::Prepare => PacketContents::Prepare(Prepare::from_bytes(&content_bytes)?),
@@ -208,7 +207,7 @@ impl Serializable<ClpPacket> for ClpPacket {
             //PacketType::Message => Message::from_bytes(content_bytes)?,
             PacketType::Unknown => return Err(Error::UnknownPacket("packet type unknown")),
         };
-        Ok(ClpPacket {
+        Ok(BtpPacket {
             packet_type,
             request_id,
             data,
@@ -304,12 +303,12 @@ mod generalized_time {
 }
 
 #[cfg(test)]
-mod clp_prepare {
+mod btp_prepare {
     use super::*;
 
     #[test]
     fn serialize_and_deserialize() {
-        let prepare1 = ClpPacket {
+        let prepare1 = BtpPacket {
             packet_type: PacketType::Prepare,
             request_id: 1,
             data: PacketContents::Prepare(Prepare {
@@ -341,13 +340,13 @@ mod clp_prepare {
                 ],
             })
         };
-        let actual = ClpPacket::from_bytes(&prepare1.to_bytes().unwrap()).unwrap();
+        let actual = BtpPacket::from_bytes(&prepare1.to_bytes().unwrap()).unwrap();
         assert_eq!(actual, prepare1);
     }
 
     #[test]
     fn serialize() {
-        let prepare1 = ClpPacket {
+        let prepare1 = BtpPacket {
             packet_type: PacketType::Prepare,
             request_id: 1,
             data: PacketContents::Prepare(Prepare {
@@ -387,7 +386,7 @@ mod clp_prepare {
 
     #[test]
     fn deserialize() {
-        let prepare1 = ClpPacket {
+        let prepare1 = BtpPacket {
             packet_type: PacketType::Prepare,
             request_id: 1,
             data: PacketContents::Prepare(Prepare {
@@ -420,7 +419,7 @@ mod clp_prepare {
             })
         };
         let prepare1_bytes = vec![3, 0, 0, 0, 1, 129, 143, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 0, 0, 0, 0, 0, 0, 3, 232, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 19, 50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90, 1, 4, 3, 105, 108, 112, 0, 30, 1, 28, 0, 0, 0, 0, 0, 0, 0, 100, 17, 101, 120, 97, 109, 112, 108, 101, 46, 114, 101, 100, 46, 97, 108, 105, 99, 101, 0, 0, 3, 102, 111, 111, 0, 3, 98, 97, 114, 4, 98, 101, 101, 112, 1, 4, 98, 111, 111, 112, 4, 106, 115, 111, 110, 2, 2, 123, 125];
-        let actual = ClpPacket::from_bytes(&prepare1_bytes);
+        let actual = BtpPacket::from_bytes(&prepare1_bytes);
         println!("parsed {:?}", actual);
         assert_eq!(actual.unwrap(), prepare1);
     }
