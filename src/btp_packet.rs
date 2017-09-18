@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc, TimeZone, NaiveDateTime};
 
 const DATE_TIME_FORMAT: &'static str = "%Y%m%d%H%M%S%.3fZ";
 
+// TODO replace these functions with a GeneralizedTime struct
 fn datetime_to_bytes(date: DateTime<Utc>) -> Vec<u8> {
     date.naive_utc().format(DATE_TIME_FORMAT).to_string().into_bytes()
 }
@@ -69,24 +70,24 @@ impl From<u8> for ContentType {
 #[derive(Debug, PartialEq, Clone)]
 #[repr(u8)]
 pub enum PacketType {
-    //Response = 1,
+    Response = 1,
     //Error = 2,
     Prepare = 3,
     //Fulfill = 4,
     //Reject = 5,
-    //Message = 6,
+    Message = 6,
     Unknown,
 }
 
 impl From<u8> for PacketType {
     fn from(type_int: u8) -> Self {
         match type_int {
-            //1 => PacketType::Response,
+            1 => PacketType::Response,
             //2 => PacketType::Error,
             3 => PacketType::Prepare,
             //4 => PacketType::Fulfill,
             //5 => PacketType::Reject,
-            //6 => PacketType::Message,
+            6 => PacketType::Message,
             _ => PacketType::Unknown
         }
     }
@@ -180,7 +181,9 @@ fn read_protocol_data(bytes: &[u8]) -> Result<Vec<ProtocolData>, Error> {
 
 #[derive(Debug, PartialEq)]
 pub enum PacketContents {
+    Response(Response),
     Prepare(Prepare),
+    Message(Message)
 }
 
 #[derive(Debug, PartialEq)]
@@ -199,12 +202,12 @@ impl Serializable<BtpPacket> for BtpPacket {
         // TODO don't copy content_bytes
         let content_bytes = reader.read_var_octet_string()?;
         let data: PacketContents = match packet_type {
-            //PacketType::Response => Response::from_bytes(content_bytes)?,
-            //PacketType::Error => Error::from_bytes(content_bytes)?,
+            PacketType::Response => PacketContents::Response(Response::from_bytes(&content_bytes)?),
+            //PacketType::Error => PacketContents::Error(Error::from_bytes(&content_bytes)?),
             PacketType::Prepare => PacketContents::Prepare(Prepare::from_bytes(&content_bytes)?),
-            //PacketType::Fulfill => Fulfill::from_bytes(content_bytes)?,
-            //PacketType::Reject => Reject::from_bytes(content_bytes)?,
-            //PacketType::Message => Message::from_bytes(content_bytes)?,
+            //PacketType::Fulfill => PacketContents::Fulfill(Fulfill::from_bytes(&content_bytes)?),
+            //PacketType::Reject => PacketContents::Reject(Reject::from_bytes(&content_bytes)?),
+            PacketType::Message => PacketContents::Message(Message::from_bytes(&content_bytes)?),
             PacketType::Unknown => return Err(Error::UnknownPacket("packet type unknown")),
         };
         Ok(BtpPacket {
@@ -219,9 +222,51 @@ impl Serializable<BtpPacket> for BtpPacket {
         bytes.write_u8(self.packet_type.clone() as u8)?;
         bytes.write_u32::<BigEndian>(self.request_id)?;
         let content_bytes = match self.data {
-            PacketContents::Prepare(ref contents) => contents,
-        }.to_bytes()?;
+            PacketContents::Response(ref response) => response.to_bytes()?,
+            PacketContents::Prepare(ref prepare) => prepare.to_bytes()?,
+            PacketContents::Message(ref message) => message.to_bytes()?,
+        };
         bytes.write_var_octet_string(&content_bytes)?;
+        Ok(bytes)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Response {
+    protocol_data: Vec<ProtocolData>,
+}
+
+impl Serializable<Response> for Response {
+    fn from_bytes(bytes: &[u8]) -> Result<Response, Error> {
+        let protocol_data = read_protocol_data(bytes)?;
+        Ok(Response {
+            protocol_data,
+        })
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes: Vec<u8> = Vec::new();
+        write_protocol_data(&mut bytes, &self.protocol_data)?;
+        Ok(bytes)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Message {
+    protocol_data: Vec<ProtocolData>,
+}
+
+impl Serializable<Message> for Message {
+    fn from_bytes(bytes: &[u8]) -> Result<Message, Error> {
+        let protocol_data = read_protocol_data(bytes)?;
+        Ok(Message {
+            protocol_data,
+        })
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes: Vec<u8> = Vec::new();
+        write_protocol_data(&mut bytes, &self.protocol_data)?;
         Ok(bytes)
     }
 }
@@ -306,9 +351,8 @@ mod generalized_time {
 mod btp_prepare {
     use super::*;
 
-    #[test]
-    fn serialize_and_deserialize() {
-        let prepare1 = BtpPacket {
+    fn get_instance1() -> BtpPacket {
+        BtpPacket {
             packet_type: PacketType::Prepare,
             request_id: 1,
             data: PacketContents::Prepare(Prepare {
@@ -318,7 +362,7 @@ mod btp_prepare {
                 expires_at: DateTime::parse_from_rfc3339("2017-08-28T09:32:00.000Z").unwrap().with_timezone(&Utc),
                 protocol_data: vec![
                     ProtocolData {
-                        protocol_name: "ilp".to_string(),
+                        protocol_name: String::from("ilp"),
                         content_type: ContentType::ApplicationOctetStream,
                         data: vec![1,28,0,0,0,0,0,0,0,100,17,101,120,97,109,112,108,101,46,114,101,100,46,97,108,105,99,101,0,0]
                     },
@@ -339,89 +383,21 @@ mod btp_prepare {
                     }
                 ],
             })
-        };
-        let actual = BtpPacket::from_bytes(&prepare1.to_bytes().unwrap()).unwrap();
-        assert_eq!(actual, prepare1);
+        }
+    }
+
+    fn get_bytes1() -> Vec<u8> {
+        vec![3, 0, 0, 0, 1, 129, 143, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 0, 0, 0, 0, 0, 0, 3, 232, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 19, 50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90, 1, 4, 3, 105, 108, 112, 0, 30, 1, 28, 0, 0, 0, 0, 0, 0, 0, 100, 17, 101, 120, 97, 109, 112, 108, 101, 46, 114, 101, 100, 46, 97, 108, 105, 99, 101, 0, 0, 3, 102, 111, 111, 0, 3, 98, 97, 114, 4, 98, 101, 101, 112, 1, 4, 98, 111, 111, 112, 4, 106, 115, 111, 110, 2, 2, 123, 125]
     }
 
     #[test]
     fn serialize() {
-        let prepare1 = BtpPacket {
-            packet_type: PacketType::Prepare,
-            request_id: 1,
-            data: PacketContents::Prepare(Prepare {
-                transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
-                amount: 1000,
-                execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
-                expires_at: DateTime::parse_from_rfc3339("2017-08-28T09:32:00.000Z").unwrap().with_timezone(&Utc),
-                protocol_data: vec![
-                    ProtocolData {
-                        protocol_name: "ilp".to_string(),
-                        content_type: ContentType::ApplicationOctetStream,
-                        data: vec![1,28,0,0,0,0,0,0,0,100,17,101,120,97,109,112,108,101,46,114,101,100,46,97,108,105,99,101,0,0]
-                    },
-                    ProtocolData {
-                        protocol_name: "foo".to_string(),
-                        content_type: ContentType::ApplicationOctetStream,
-                        data: b"bar".to_vec()
-                    },
-                    ProtocolData {
-                        protocol_name: "beep".to_string(),
-                        content_type: ContentType::TextPlainUtf8,
-                        data: b"boop".to_vec()
-                    },
-                    ProtocolData {
-                        protocol_name: "json".to_string(),
-                        content_type: ContentType::ApplicationJson,
-                        data: b"{}".to_vec()
-                    }
-                ],
-            })
-        };
-        let prepare1_bytes = vec![3, 0, 0, 0, 1, 129, 143, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 0, 0, 0, 0, 0, 0, 3, 232, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 19, 50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90, 1, 4, 3, 105, 108, 112, 0, 30, 1, 28, 0, 0, 0, 0, 0, 0, 0, 100, 17, 101, 120, 97, 109, 112, 108, 101, 46, 114, 101, 100, 46, 97, 108, 105, 99, 101, 0, 0, 3, 102, 111, 111, 0, 3, 98, 97, 114, 4, 98, 101, 101, 112, 1, 4, 98, 111, 111, 112, 4, 106, 115, 111, 110, 2, 2, 123, 125];
-        let actual = prepare1.to_bytes().unwrap();
-        println!("bytes {:?}", actual);
-        assert_eq!(actual, prepare1_bytes);
+        assert_eq!(get_instance1().to_bytes().unwrap(), get_bytes1());
     }
 
     #[test]
     fn deserialize() {
-        let prepare1 = BtpPacket {
-            packet_type: PacketType::Prepare,
-            request_id: 1,
-            data: PacketContents::Prepare(Prepare {
-                transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
-                amount: 1000,
-                execution_condition: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
-                expires_at: DateTime::parse_from_rfc3339("2017-08-28T09:32:00.000Z").unwrap().with_timezone(&Utc),
-                protocol_data: vec![
-                    ProtocolData {
-                        protocol_name: "ilp".to_string(),
-                        content_type: ContentType::ApplicationOctetStream,
-                        data: vec![1,28,0,0,0,0,0,0,0,100,17,101,120,97,109,112,108,101,46,114,101,100,46,97,108,105,99,101,0,0]
-                    },
-                    ProtocolData {
-                        protocol_name: "foo".to_string(),
-                        content_type: ContentType::ApplicationOctetStream,
-                        data: b"bar".to_vec()
-                    },
-                    ProtocolData {
-                        protocol_name: "beep".to_string(),
-                        content_type: ContentType::TextPlainUtf8,
-                        data: b"boop".to_vec()
-                    },
-                    ProtocolData {
-                        protocol_name: "json".to_string(),
-                        content_type: ContentType::ApplicationJson,
-                        data: b"{}".to_vec()
-                    }
-                ],
-            })
-        };
-        let prepare1_bytes = vec![3, 0, 0, 0, 1, 129, 143, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 0, 0, 0, 0, 0, 0, 3, 232, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 19, 50, 48, 49, 55, 48, 56, 50, 56, 48, 57, 51, 50, 48, 48, 46, 48, 48, 48, 90, 1, 4, 3, 105, 108, 112, 0, 30, 1, 28, 0, 0, 0, 0, 0, 0, 0, 100, 17, 101, 120, 97, 109, 112, 108, 101, 46, 114, 101, 100, 46, 97, 108, 105, 99, 101, 0, 0, 3, 102, 111, 111, 0, 3, 98, 97, 114, 4, 98, 101, 101, 112, 1, 4, 98, 111, 111, 112, 4, 106, 115, 111, 110, 2, 2, 123, 125];
-        let actual = BtpPacket::from_bytes(&prepare1_bytes);
-        println!("parsed {:?}", actual);
-        assert_eq!(actual.unwrap(), prepare1);
+        assert_eq!(BtpPacket::from_bytes(&get_bytes1()).unwrap(), get_instance1());
     }
 }
 
