@@ -71,10 +71,10 @@ impl From<u8> for ContentType {
 #[repr(u8)]
 pub enum PacketType {
     Response = 1,
-    //Error = 2,
+    ErrorResponse = 2,
     Prepare = 3,
-    //Fulfill = 4,
-    //Reject = 5,
+    Fulfill = 4,
+    Reject = 5,
     Message = 6,
     Unknown,
 }
@@ -83,10 +83,10 @@ impl From<u8> for PacketType {
     fn from(type_int: u8) -> Self {
         match type_int {
             1 => PacketType::Response,
-            //2 => PacketType::Error,
+            2 => PacketType::ErrorResponse,
             3 => PacketType::Prepare,
-            //4 => PacketType::Fulfill,
-            //5 => PacketType::Reject,
+            4 => PacketType::Fulfill,
+            5 => PacketType::Reject,
             6 => PacketType::Message,
             _ => PacketType::Unknown
         }
@@ -182,8 +182,11 @@ fn read_protocol_data(bytes: &[u8]) -> Result<Vec<ProtocolData>, Error> {
 #[derive(Debug, PartialEq)]
 pub enum PacketContents {
     Response(Response),
+    ErrorResponse(ErrorResponse),
     Prepare(Prepare),
-    Message(Message)
+    Reject(Reject),
+    Fulfill(Fulfill),
+    Message(Message),
 }
 
 #[derive(Debug, PartialEq)]
@@ -203,10 +206,10 @@ impl Serializable<BtpPacket> for BtpPacket {
         let content_bytes = reader.read_var_octet_string()?;
         let data: PacketContents = match packet_type {
             PacketType::Response => PacketContents::Response(Response::from_bytes(&content_bytes)?),
-            //PacketType::Error => PacketContents::Error(Error::from_bytes(&content_bytes)?),
+            PacketType::ErrorResponse => PacketContents::ErrorResponse(ErrorResponse::from_bytes(&content_bytes)?),
             PacketType::Prepare => PacketContents::Prepare(Prepare::from_bytes(&content_bytes)?),
-            //PacketType::Fulfill => PacketContents::Fulfill(Fulfill::from_bytes(&content_bytes)?),
-            //PacketType::Reject => PacketContents::Reject(Reject::from_bytes(&content_bytes)?),
+            PacketType::Fulfill => PacketContents::Fulfill(Fulfill::from_bytes(&content_bytes)?),
+            PacketType::Reject => PacketContents::Reject(Reject::from_bytes(&content_bytes)?),
             PacketType::Message => PacketContents::Message(Message::from_bytes(&content_bytes)?),
             PacketType::Unknown => return Err(Error::UnknownPacket("packet type unknown")),
         };
@@ -223,7 +226,10 @@ impl Serializable<BtpPacket> for BtpPacket {
         bytes.write_u32::<BigEndian>(self.request_id)?;
         let content_bytes = match self.data {
             PacketContents::Response(ref response) => response.to_bytes()?,
+            PacketContents::ErrorResponse(ref message) => message.to_bytes()?,
             PacketContents::Prepare(ref prepare) => prepare.to_bytes()?,
+            PacketContents::Fulfill(ref message) => message.to_bytes()?,
+            PacketContents::Reject(ref message) => message.to_bytes()?,
             PacketContents::Message(ref message) => message.to_bytes()?,
         };
         bytes.write_var_octet_string(&content_bytes)?;
@@ -251,21 +257,47 @@ impl Serializable<Response> for Response {
     }
 }
 
+// Corresponds to BTP Error type
 #[derive(Debug, PartialEq)]
-pub struct Message {
+pub struct ErrorResponse {
+    code: String, // 3 ASCII characters
+    name: String,
+    triggered_at: DateTime<Utc>,
+    data: String,
     protocol_data: Vec<ProtocolData>,
 }
 
-impl Serializable<Message> for Message {
-    fn from_bytes(bytes: &[u8]) -> Result<Message, Error> {
-        let protocol_data = read_protocol_data(bytes)?;
-        Ok(Message {
+impl Serializable<ErrorResponse> for ErrorResponse {
+    fn from_bytes(bytes: &[u8]) -> Result<ErrorResponse, Error> {
+        let mut reader = Cursor::new(bytes);
+        let mut code = [0u8; 3];
+        reader.read_exact(&mut code)?;
+        let code = String::from_utf8(code.to_vec())?;
+        // TODO name can only be ASCII
+        let name = String::from_utf8(reader.read_var_octet_string()?)?;
+        let triggered_at_bytes = reader.read_var_octet_string()?;
+        let triggered_at = datetime_from_bytes(triggered_at_bytes)?;
+        let data = String::from_utf8(reader.read_var_octet_string()?)?;
+        let protocol_data_bytes = &bytes[reader.position() as usize..];
+        let protocol_data = read_protocol_data(protocol_data_bytes)?;
+        Ok(ErrorResponse {
+            code,
+            name,
+            triggered_at,
+            data,
             protocol_data,
         })
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut bytes: Vec<u8> = Vec::new();
+        if self.code.len() as u64 != 3 || !self.code.is_ascii() {
+            return Err(Error::Invalid("code must be 3 ASCII characters"));
+        }
+        bytes.write_all(&self.code.as_bytes()[..3])?;
+        bytes.write_var_octet_string(self.name.as_bytes())?;
+        bytes.write_var_octet_string(&datetime_to_bytes(self.triggered_at))?;
+        bytes.write_var_octet_string(self.data.as_bytes())?;
         write_protocol_data(&mut bytes, &self.protocol_data)?;
         Ok(bytes)
     }
@@ -285,16 +317,11 @@ impl Serializable<Prepare> for Prepare {
         let mut reader = Cursor::new(bytes);
         let mut transfer_id = [0u8; 16];
         reader.read_exact(&mut transfer_id)?;
-        println!("transfer_id {:?}", transfer_id);
         let amount = reader.read_u64::<BigEndian>()?;
-        println!("amount {:?}", amount);
         let mut execution_condition = [0u8; 32];
-        println!("execution_condition {:?}", execution_condition);
         reader.read_exact(&mut execution_condition)?;
         let expires_at_bytes = reader.read_var_octet_string()?;
-        let expires_at_len = expires_at_bytes.len();
         let expires_at = datetime_from_bytes(expires_at_bytes)?;
-        println!("expires_at {:?}", expires_at);
         let protocol_data_bytes = &bytes[reader.position() as usize..];
         let protocol_data = read_protocol_data(protocol_data_bytes)?;
         Ok(Prepare {
@@ -317,6 +344,86 @@ impl Serializable<Prepare> for Prepare {
         Ok(bytes)
     }
 }
+
+#[derive(Debug, PartialEq)]
+pub struct Fulfill {
+    transfer_id: [u8; 16],
+    fulfillment: [u8; 32],
+    protocol_data: Vec<ProtocolData>,
+}
+
+impl Serializable<Fulfill> for Fulfill {
+    fn from_bytes(bytes: &[u8]) -> Result<Fulfill, Error> {
+        let mut reader = Cursor::new(bytes);
+        let mut transfer_id = [0u8; 16];
+        reader.read_exact(&mut transfer_id)?;
+        let mut fulfillment = [0u8; 32];
+        reader.read_exact(&mut fulfillment)?;
+        let protocol_data_bytes = &bytes[reader.position() as usize..];
+        let protocol_data = read_protocol_data(protocol_data_bytes)?;
+        Ok(Fulfill {
+            transfer_id,
+            fulfillment,
+            protocol_data,
+        })
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.write_all(&self.transfer_id)?;
+        bytes.write_all(&self.fulfillment)?;
+        write_protocol_data(&mut bytes, &self.protocol_data)?;
+        Ok(bytes)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Reject {
+    transfer_id: [u8; 16],
+    protocol_data: Vec<ProtocolData>,
+}
+
+impl Serializable<Reject> for Reject {
+    fn from_bytes(bytes: &[u8]) -> Result<Reject, Error> {
+        let mut reader = Cursor::new(bytes);
+        let mut transfer_id = [0u8; 16];
+        reader.read_exact(&mut transfer_id)?;
+        let protocol_data_bytes = &bytes[reader.position() as usize..];
+        let protocol_data = read_protocol_data(protocol_data_bytes)?;
+        Ok(Reject {
+            transfer_id,
+            protocol_data,
+        })
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.write_all(&self.transfer_id)?;
+        write_protocol_data(&mut bytes, &self.protocol_data)?;
+        Ok(bytes)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Message {
+    protocol_data: Vec<ProtocolData>,
+}
+
+impl Serializable<Message> for Message {
+    fn from_bytes(bytes: &[u8]) -> Result<Message, Error> {
+        let protocol_data = read_protocol_data(bytes)?;
+        Ok(Message {
+            protocol_data,
+        })
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut bytes: Vec<u8> = Vec::new();
+        write_protocol_data(&mut bytes, &self.protocol_data)?;
+        Ok(bytes)
+    }
+}
+
 #[cfg(test)]
 mod generalized_time {
     use super::*;
@@ -401,3 +508,108 @@ mod btp_prepare {
     }
 }
 
+#[cfg(test)]
+mod btp_error {
+    use super::*;
+
+    fn get_instance1() -> BtpPacket {
+        BtpPacket {
+            packet_type: PacketType::ErrorResponse,
+            request_id: 1,
+            data: PacketContents::ErrorResponse(ErrorResponse {
+                code: "L13".to_string(),
+                name: "errorName".to_string(),
+                triggered_at: DateTime::parse_from_rfc3339("2017-08-28T18:32:00.000Z").unwrap().with_timezone(&Utc),
+                data: "boo".to_string(),
+                protocol_data: vec![
+                    ProtocolData {
+                        protocol_name: String::from("ilp"),
+                        content_type: ContentType::ApplicationOctetStream,
+                        data: vec![1,28,0,0,0,0,0,0,0,100,17,101,120,97,109,112,108,101,46,114,101,100,46,97,108,105,99,101,0,0]
+                    },
+                    ProtocolData {
+                        protocol_name: "foo".to_string(),
+                        content_type: ContentType::ApplicationOctetStream,
+                        data: b"bar".to_vec()
+                    },
+                    ProtocolData {
+                        protocol_name: "beep".to_string(),
+                        content_type: ContentType::TextPlainUtf8,
+                        data: b"boop".to_vec()
+                    },
+                    ProtocolData {
+                        protocol_name: "json".to_string(),
+                        content_type: ContentType::ApplicationJson,
+                        data: b"{}".to_vec()
+                    }
+                ],
+            })
+        }
+    }
+
+    fn get_bytes1() -> Vec<u8> {
+        vec![2, 0, 0, 0, 1, 104, 76, 49, 51, 9, 101, 114, 114, 111, 114, 78, 97, 109, 101, 19, 50, 48, 49, 55, 48, 56, 50, 56, 49, 56, 51, 50, 48, 48, 46, 48, 48, 48, 90, 3, 98, 111, 111, 1, 4,3, 105, 108, 112, 0, 30, 1, 28, 0, 0, 0, 0, 0, 0, 0, 100, 17, 101, 120, 97, 109, 112, 108, 101, 46, 114, 101, 100, 46, 97, 108, 105, 99, 101, 0, 0, 3, 102, 111, 111, 0, 3, 98, 97, 114, 4, 98, 101, 101, 112,1, 4, 98, 111, 111, 112, 4, 106, 115, 111, 110, 2, 2, 123, 125]
+    }
+
+    #[test]
+    fn serialize() {
+        assert_eq!(get_instance1().to_bytes().unwrap(), get_bytes1());
+    }
+
+    #[test]
+    fn deserialize() {
+        assert_eq!(BtpPacket::from_bytes(&get_bytes1()).unwrap(), get_instance1());
+    }
+}
+
+#[cfg(test)]
+mod btp_fulfill {
+    use super::*;
+
+    fn get_instance1() -> BtpPacket {
+        BtpPacket {
+            packet_type: PacketType::Fulfill,
+            request_id: 1,
+            data: PacketContents::Fulfill(Fulfill {
+                transfer_id: [180,200,56,246,128,177,71,248,168,46,177,252,251,237,137,213],
+                fulfillment: [219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2],
+                protocol_data: vec![
+                    ProtocolData {
+                        protocol_name: String::from("ilp"),
+                        content_type: ContentType::ApplicationOctetStream,
+                        data: vec![1,28,0,0,0,0,0,0,0,100,17,101,120,97,109,112,108,101,46,114,101,100,46,97,108,105,99,101,0,0]
+                    },
+                    ProtocolData {
+                        protocol_name: "foo".to_string(),
+                        content_type: ContentType::ApplicationOctetStream,
+                        data: b"bar".to_vec()
+                    },
+                    ProtocolData {
+                        protocol_name: "beep".to_string(),
+                        content_type: ContentType::TextPlainUtf8,
+                        data: b"boop".to_vec()
+                    },
+                    ProtocolData {
+                        protocol_name: "json".to_string(),
+                        content_type: ContentType::ApplicationJson,
+                        data: b"{}".to_vec()
+                    }
+                ],
+            })
+        }
+    }
+
+    fn get_bytes1() -> Vec<u8> {
+        vec![4, 0, 0, 0, 1, 115, 180, 200, 56, 246, 128, 177, 71, 248, 168, 46, 177, 252, 251, 237, 137, 213, 219, 42, 249, 249, 219, 166, 255, 52, 179, 237, 173, 251, 152, 107, 155, 180, 205, 75, 75, 65, 229, 4, 65, 25, 197, 93, 52, 175, 218, 191, 252, 2, 1, 4, 3, 105, 108, 112, 0, 30, 1, 28, 0, 0, 0, 0, 0, 0, 0, 100, 17, 101,120, 97, 109, 112, 108, 101, 46, 114, 101, 100, 46, 97, 108, 105, 99, 101, 0, 0, 3, 102, 111, 111, 0, 3, 98, 97, 114, 4, 98, 101, 101, 112, 1, 4, 98, 111, 111, 112, 4, 106, 115, 111, 110, 2, 2, 123, 125]
+    }
+
+    #[test]
+    fn serialize() {
+        assert_eq!(get_instance1().to_bytes().unwrap(), get_bytes1());
+    }
+
+    #[test]
+    fn deserialize() {
+        assert_eq!(BtpPacket::from_bytes(&get_bytes1()).unwrap(), get_instance1());
+    }
+}
