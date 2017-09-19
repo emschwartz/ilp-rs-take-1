@@ -37,7 +37,7 @@ quick_error! {
             description(err.description())
             from()
         }
-        Utf8(err: std::string::FromUtf8Error) {
+        Utf8(err: string::FromUtf8Error) {
             description(err.description())
             from()
         }
@@ -93,7 +93,7 @@ impl From<u8> for PacketType {
     }
 }
 
-trait Serializable<T> {
+pub trait Serializable<T> {
     // TODO rethink whether bytes should be mutable so that the pointer advanced automatically
     fn from_bytes(bytes: &[u8]) -> Result<T, Error>;
     fn to_bytes(&self) -> Result<Vec<u8>, Error>;
@@ -191,9 +191,9 @@ pub enum PacketContents {
 
 #[derive(Debug, PartialEq)]
 pub struct BtpPacket {
-    packet_type: PacketType,
-    request_id: u32,
-    data: PacketContents,
+    pub packet_type: PacketType,
+    pub request_id: u32,
+    pub data: PacketContents,
 }
 
 impl Serializable<BtpPacket> for BtpPacket {
@@ -224,13 +224,13 @@ impl Serializable<BtpPacket> for BtpPacket {
         let mut bytes: Vec<u8> = Vec::new();
         bytes.write_u8(self.packet_type.clone() as u8)?;
         bytes.write_u32::<BigEndian>(self.request_id)?;
-        let content_bytes = match self.data {
-            PacketContents::Response(ref response) => response.to_bytes()?,
-            PacketContents::ErrorResponse(ref message) => message.to_bytes()?,
-            PacketContents::Prepare(ref prepare) => prepare.to_bytes()?,
-            PacketContents::Fulfill(ref message) => message.to_bytes()?,
-            PacketContents::Reject(ref message) => message.to_bytes()?,
-            PacketContents::Message(ref message) => message.to_bytes()?,
+        let content_bytes: Vec<u8> = match self.data {
+            PacketContents::Response(ref contents) => contents.to_bytes()?,
+            PacketContents::ErrorResponse(ref contents) => contents.to_bytes()?,
+            PacketContents::Prepare(ref contents) => contents.to_bytes()?,
+            PacketContents::Fulfill(ref contents) => contents.to_bytes()?,
+            PacketContents::Reject(ref contents) => contents.to_bytes()?,
+            PacketContents::Message(ref contents) => contents.to_bytes()?,
         };
         bytes.write_var_octet_string(&content_bytes)?;
         Ok(bytes)
@@ -239,7 +239,7 @@ impl Serializable<BtpPacket> for BtpPacket {
 
 #[derive(Debug, PartialEq)]
 pub struct Response {
-    protocol_data: Vec<ProtocolData>,
+    pub protocol_data: Vec<ProtocolData>,
 }
 
 impl Serializable<Response> for Response {
@@ -260,11 +260,11 @@ impl Serializable<Response> for Response {
 // Corresponds to BTP Error type
 #[derive(Debug, PartialEq)]
 pub struct ErrorResponse {
-    code: String, // 3 ASCII characters
-    name: String,
-    triggered_at: DateTime<Utc>,
-    data: String,
-    protocol_data: Vec<ProtocolData>,
+    pub code: String, // 3 ASCII characters
+    pub name: String,
+    pub triggered_at: DateTime<Utc>,
+    pub data: String,
+    pub protocol_data: Vec<ProtocolData>,
 }
 
 impl Serializable<ErrorResponse> for ErrorResponse {
@@ -305,11 +305,11 @@ impl Serializable<ErrorResponse> for ErrorResponse {
 
 #[derive(Debug, PartialEq)]
 pub struct Prepare {
-    transfer_id: [u8; 16],
-    amount: u64,
-    execution_condition: [u8; 32],
-    expires_at: DateTime<Utc>,
-    protocol_data: Vec<ProtocolData>,
+    pub transfer_id: [u8; 16],
+    pub amount: u64,
+    pub execution_condition: [u8; 32],
+    pub expires_at: DateTime<Utc>,
+    pub protocol_data: Vec<ProtocolData>,
 }
 
 impl Serializable<Prepare> for Prepare {
@@ -347,9 +347,9 @@ impl Serializable<Prepare> for Prepare {
 
 #[derive(Debug, PartialEq)]
 pub struct Fulfill {
-    transfer_id: [u8; 16],
-    fulfillment: [u8; 32],
-    protocol_data: Vec<ProtocolData>,
+    pub transfer_id: [u8; 16],
+    pub fulfillment: [u8; 32],
+    pub protocol_data: Vec<ProtocolData>,
 }
 
 impl Serializable<Fulfill> for Fulfill {
