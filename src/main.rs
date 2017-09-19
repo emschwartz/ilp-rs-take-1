@@ -11,6 +11,7 @@ extern crate ring;
 extern crate uuid;
 extern crate chrono;
 extern crate byteorder;
+extern crate ws;
 
 use clap::{App, SubCommand, Arg};
 

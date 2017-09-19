@@ -2,6 +2,7 @@ use ilp_packet;
 use base64;
 use rand::{Rng, OsRng};
 use ring::{hmac, digest};
+use std::io::Read;
 
 const PSK_CONDITION_STRING: &'static [u8]= b"ilp_psk_condition";
 
@@ -22,7 +23,7 @@ fn packet_to_preimage(shared_secret: &[u8], packet: &[u8]) -> Vec<u8> {
     hmac(&psk_condition_key, packet)
 }
 
-pub fn create_packet_and_condition(shared_secret: &[u8], destination_account: &str, destination_amount: u64) -> (Vec<u8>, Vec<u8>) {
+pub fn create_packet_and_condition(shared_secret: &[u8], destination_account: &str, destination_amount: u64) -> (Vec<u8>, [u8; 32]) {
     let nonce = get_psk_token();
     // TODO support encryption and memos
     let data = format!("PSK/1.0\nNonce: {}\nEncryption: none\n\n\n\n", nonce).into_bytes();
@@ -33,6 +34,7 @@ pub fn create_packet_and_condition(shared_secret: &[u8], destination_account: &s
         // TODO don't use unwrap
     }.to_bytes().unwrap();
     let preimage = packet_to_preimage(shared_secret, &packet);
-    let condition = digest::digest(&digest::SHA256, &preimage).as_ref().to_vec();
+    let mut condition = [0u8; 32];
+    let mut condition_slice = digest::digest(&digest::SHA256, &preimage).as_ref().read_exact(&mut condition);
     (packet, condition)
 }

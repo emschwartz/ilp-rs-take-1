@@ -3,6 +3,7 @@ use ilqp;
 use psk;
 use base64;
 use plugin;
+use plugin::{Transfer, Plugin};
 use serde_json;
 use uuid::{Uuid, UuidVersion};
 use chrono::prelude::*;
@@ -16,6 +17,10 @@ quick_error! {
             from()
         }
         Ilqp(err: ilqp::Error) {
+            description(err.description())
+            from()
+        }
+        Plugin(err: plugin::Error) {
             description(err.description())
             from()
         }
@@ -99,17 +104,20 @@ pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> Resul
 
     // TODO get scale from plugin
     let source_scale = 6;
-    let transfer = plugin::Transfer {
-        id: Uuid::new(UuidVersion::Random).unwrap().hyphenated().to_string(),
-        from: "".to_string(),
-        to: spsp_details.destination_account.to_string(),
-        ledger: "".to_string(),
+    // TODO make hold duration depend on quote
+    let source_hold_duration = 60;
+    let transfer = Transfer {
+        id: *Uuid::new_v4().as_bytes(),
+        //from: "".to_string(),
+        //to: spsp_details.destination_account.to_string(),
+        //ledger: "".to_string(),
         amount: float_to_int(source_amount, source_scale),
         ilp: packet,
         execution_condition: condition,
-        expires_at: (Utc::now().checked_add_signed(Duration::seconds(60)).unwrap()).to_rfc3339()
+        expires_at: Utc::now().checked_add_signed(Duration::seconds(source_hold_duration)).unwrap().to_rfc3339()
     };
     println!("Sending transfer: {}", serde_json::to_string(&transfer).unwrap());
 
-    Ok(())
+    let mut plugin = Plugin::new("ws://localhost:8080".to_string());
+    plugin.send_transfer_sync(transfer).map_err(|err| Error::from(err))
 }

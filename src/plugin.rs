@@ -1,32 +1,61 @@
 use serde::{Serializer, Deserialize, Deserializer};
 use base64;
+use ws::{connect, Handler, Sender, Message, CloseCode, Error as WsError};
 use ilp_packet::oer;
+// TODO get rid of duplicate imports
+use btp_packet::{BtpPacket, PacketType, PacketContents, Prepare, Fulfill, Serializable, Error as BtpError};
+use uuid::Uuid;
+use chrono::{DateTime, Utc, ParseError as ChronoError};
 
 // TODO turn plugin interface into trait
 
 quick_error! {
     #[derive(Debug)]
     pub enum Error {
-
+        Ws(err: WsError) {
+            description(err.description())
+            from()
+        }
+        NotConnected(method: &'static str) {
+            description("Plugin must be connected to call method")
+        }
+        Serialization(err: BtpError) {
+            description(err.description())
+            from()
+        }
+        DateTimeParse(err: ChronoError) {
+            description(err.description())
+            from()
+        }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Transfer {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub ledger: String,
+    pub id: [u8; 16],
+    //pub from: String,
+    //pub to: String,
+    //pub ledger: String,
     pub amount: u64,
     #[serde(serialize_with = "as_base64")]
     pub ilp: Vec<u8>,
     #[serde(serialize_with = "as_base64")]
-    pub execution_condition: Vec<u8>,
+    pub execution_condition: [u8; 32],
     pub expires_at: String,
+    // TODO add protocol_data
 }
 
-pub fn as_base64<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferFulfillment {
+    pub id: [u8; 16],
+    #[serde(serialize_with = "as_base64")]
+    pub fulfillment: [u8; 32],
+    // TODO add protocol_data
+}
+
+fn as_base64<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
   where T: AsRef<[u8]>,
         S: Serializer
 {
@@ -34,17 +63,39 @@ pub fn as_base64<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
 }
 
 pub struct Plugin {
-
+    server: String,
 }
 
 impl Plugin {
-    pub fn connect() -> () {
-
+    pub fn new(server: String) -> Self {
+        Plugin {
+            server: server,
+        }
     }
 
-    pub fn send_transfer(transfer: Transfer) -> Result<(), Error> {
+    pub fn send_transfer_sync(&mut self, transfer: Transfer) -> Result<(), Error> {
+        let packet = BtpPacket {
+            packet_type: PacketType::Prepare,
+            // TODO use random request_id
+            request_id: 1,
+            data: PacketContents::Prepare(Prepare {
+                transfer_id: transfer.id,
+                amount: transfer.amount,
+                execution_condition: transfer.execution_condition,
+                expires_at: DateTime::parse_from_rfc3339(&transfer.expires_at)?.with_timezone(&Utc),
+                protocol_data: vec![]
+                // TODO add protocol data
+            })
+        }.to_bytes()?;
+        println!("send packet {:?}", packet);
+        //connect(self.server.to_string(), |out| {
+            //out.send(packet).unwrap();
 
+            //move |msg| {
+                //println!("got message {}", msg);
+                //out.close(CloseCode::Normal)
+            //}
+        //});
         Ok(())
     }
-
 }
