@@ -113,10 +113,8 @@ impl ProtocolData {
         let mut reader = Cursor::new(bytes);
         let protocol_name_bytes = reader.read_var_octet_string()?;
         let protocol_name = String::from_utf8(protocol_name_bytes.to_vec())?;
-        println!("protocol_name {}", protocol_name);
 
         let content_type = ContentType::from(reader.read_u8()?);
-        println!("content_type {:?}", content_type);
         let data = reader.read_var_octet_string()?;
         let num_bytes_read = reader.position() as u64;
         Ok((ProtocolData {
@@ -163,14 +161,11 @@ fn write_protocol_data(bytes: &mut Vec<u8>, protocol_data: &Vec<ProtocolData>) -
 
 fn read_protocol_data(bytes: &[u8]) -> Result<Vec<ProtocolData>, Error> {
     let mut reader = Cursor::new(bytes);
-    println!("read protocol data");
     let length_prefix_length_prefix = reader.read_u8()?;
-    println!("length prefix length {}", length_prefix_length_prefix);
     let length_prefix = reader.read_uint::<BigEndian>(length_prefix_length_prefix as usize)?;
     let mut data: Vec<ProtocolData> = Vec::new();
 
     let mut position = reader.position();
-    println!("before reading protocol data {:?}", reader);
     for _i in 0..length_prefix {
         let (protocol_data, num_bytes_read) = ProtocolData::from_bytes_get_length(&bytes[position as usize..])?;
         position += num_bytes_read;
@@ -201,7 +196,6 @@ impl Serializable<BtpPacket> for BtpPacket {
         let mut reader = Cursor::new(bytes);
         let packet_type = PacketType::from(reader.read_u8()?);
         let request_id = reader.read_u32::<BigEndian>()?;
-        println!("packet type, request id {:?} {:?}", packet_type, request_id);
         // TODO don't copy content_bytes
         let content_bytes = reader.read_var_octet_string()?;
         let data: PacketContents = match packet_type {

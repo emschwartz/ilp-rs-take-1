@@ -36,9 +36,13 @@ quick_error! {
             description(err.description())
             from()
         }
+        Misc(descr: &'static str) {
+            description(descr)
+        }
     }
 }
 
+// TODO maybe replace plugin interface with BTP structs
 #[derive(Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct Transfer {
@@ -102,12 +106,47 @@ impl Plugin {
                 // TODO add protocol data
             })
         }.to_bytes()?;
-        let msg = OwnedMessage::from(Message::binary(packet));
+        let outgoing_message = OwnedMessage::from(Message::binary(packet));
         let mut core = Core::new()?;
         let runner = ClientBuilder::new(&self.server).unwrap()
             .async_connect(None, &core.handle())
-            .and_then(|(s, _)| s.send(msg));
+            .and_then(|(duplex, _)| {
+                // TODO handle error
+                let (sink, stream) = duplex.split();
+                sink.send(outgoing_message)
+                    .and_then(|sink|
+                              stream.filter_map(|incoming_message| {
+                                  match incoming_message {
+                                      OwnedMessage::Close(e) => Some(OwnedMessage::Close(e)),
+                                      OwnedMessage::Ping(d) => Some(OwnedMessage::Pong(d)),
+                                      OwnedMessage::Binary(packet) => {
+                                          // TODO return fulfillment or implement fulfillment event
+                                          // that the SPSP module can listen for
+                                          match self.handle_incoming(packet) {
+                                              Ok(response) => Some(OwnedMessage::from(Message::binary(response))),
+                                              Err(_error) => None,
+                                          }
+                                      },
+                                      _ => None,
+                                  }
+                              })
+                              .forward(sink)
+                              )
+            });
         core.run(runner).unwrap();
         Ok(())
+    }
+
+    // TODO match requests and responses
+    fn handle_incoming(&mut self, packet: Vec<u8>) -> Result<Vec<u8>, Error> {
+        let packet = BtpPacket::from_bytes(&packet)?;
+        match packet.data {
+            PacketContents::Message(message) => Err(Error::Misc("Not really an error but don't need to respond for this type")),
+            PacketContents::Fulfill(fulfill) => {
+                println!("got fulfillment {:?}", fulfill);
+                Err(Error::Misc("blah"))
+            },
+            _ => Err(Error::Misc("No handler implemented yet for this packet type")),
+        }
     }
 }

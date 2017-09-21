@@ -17,6 +17,7 @@ extern crate tokio_core;
 
 use clap::{App, SubCommand, Arg};
 
+// TODO move all of these to lib.rs or separate crates
 mod spsp;
 mod ilqp;
 mod psk;

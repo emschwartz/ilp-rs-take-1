@@ -118,6 +118,7 @@ pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> Resul
     };
     println!("Sending transfer: {}", serde_json::to_string(&transfer).unwrap());
 
+    // TODO don't hardcode websocket uri
     let mut plugin = Plugin::new("ws://localhost:8080".to_string());
     plugin.send_transfer(transfer).map_err(|err| Error::from(err))
 }
