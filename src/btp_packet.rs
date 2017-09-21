@@ -101,9 +101,9 @@ pub trait Serializable<T> {
 
 #[derive(Debug, PartialEq)]
 pub struct ProtocolData {
-    protocol_name: String,
-    content_type: ContentType,
-    data: Vec<u8>,
+    pub protocol_name: String,
+    pub content_type: ContentType,
+    pub data: Vec<u8>,
 }
 
 impl ProtocolData {

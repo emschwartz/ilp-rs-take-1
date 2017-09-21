@@ -11,7 +11,9 @@ extern crate ring;
 extern crate uuid;
 extern crate chrono;
 extern crate byteorder;
-extern crate ws;
+extern crate futures;
+extern crate websocket;
+extern crate tokio_core;
 
 use clap::{App, SubCommand, Arg};
 
