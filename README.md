@@ -1,13 +1,27 @@
 # Rust ILP Client
 > For sending [Interledger](https://interledger.org) payments
 
-## Installation
+**This project is under heavy development and written by a Rust n00b. Contributors welcome!**
 
-**TODO**
+This module is a reimplementation of the [`ilp` Javascript Module](https://github.com/interledgerjs/ilp) in Rust.
 
 ## CLI Usage
 
-**TODO**
+### Install
+
+```sh
+
+git clone https://github.com/emschwartz/ilp-rs
+cd ilp-rs
+cargo build --release
+```
+
+### Send Payments
+
+(From the `ilp-rs` directory)
+```sh
+./target/release/ilp pay --source_amount=10 --destination_amount=10 http://localhost:3000
+```
 
 ## Library Usage
 
@@ -21,7 +35,6 @@
 - [x] Implementation of BTP for sending transfers and receiving fulfillments
 - [x] Properly return fulfillments from plugin
 - [ ] Make BTP server configurable through CLI (or config file?)
-- [ ] Switch log statements to debug_env
 - [ ] Add incoming event stream that parses messages
 - [ ] Add async prepare function (that doesn't wait for the fulfill)
 - [ ] Implement ILQP
