@@ -120,5 +120,7 @@ pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> Resul
 
     // TODO don't hardcode websocket uri
     let mut plugin = Plugin::new("ws://localhost:8080".to_string());
-    plugin.send_transfer(transfer).map_err(|err| Error::from(err))
+    plugin.prepare_and_wait_for_fulfill_sync(transfer)
+        .map(|fulfillment| ())
+        .map_err(|err| Error::from(err))
 }

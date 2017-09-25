@@ -19,10 +19,14 @@
 - [x] Basic implementation of PSK (memos not supported yet)
 - [x] Implementation of ILP
 - [x] Implementation of BTP for sending transfers and receiving fulfillments
-- [ ] Properly return fulfillments from plugin
-- [ ] Clean up event handling mechanism in Plugin (either by passing in closures to event listening functions or by making the plugin a trait that users implement with their own event handlers)
+- [x] Properly return fulfillments from plugin
+- [ ] Make BTP server configurable through CLI (or config file?)
+- [ ] Switch log statements to debug_env
+- [ ] Add incoming event stream that parses messages
+- [ ] Add async prepare function (that doesn't wait for the fulfill)
 - [ ] Implement ILQP
 - [ ] Add support for memos in PSK and SPSP
-- [ ] Refactor ILP, PSK, etc into separate modules
+- [ ] Refactor ILP, PSK, etc into separate modules and export as library
 - [ ] Add support for receiving payments
+- [ ] Finish plugin interface and make it a trait
 - [ ] Implement other plugins

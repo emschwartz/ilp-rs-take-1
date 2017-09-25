@@ -86,8 +86,10 @@ impl Plugin {
         }
     }
 
-    pub fn send_transfer(&mut self, transfer: Transfer) -> Result<(), Error> {
-        let packet = BtpPacket {
+    // TODO add async method for sending Prepares and stream for incoming events
+    // TODO does it need a mutable reference to self?
+    pub fn prepare_and_wait_for_fulfill_sync(&mut self, transfer: Transfer) -> Result<[u8; 32], Error> {
+        let outgoing_packet = BtpPacket {
             packet_type: PacketType::Prepare,
             // TODO use random request_id
             request_id: 1,
@@ -103,50 +105,51 @@ impl Plugin {
                         data: transfer.ilp
                     }
                 ]
-                // TODO add protocol data
             })
-        }.to_bytes()?;
-        let outgoing_message = OwnedMessage::from(Message::binary(packet));
-        let mut core = Core::new()?;
-        let runner = ClientBuilder::new(&self.server).unwrap()
-            .async_connect(None, &core.handle())
-            .and_then(|(duplex, _)| {
-                // TODO handle error
-                let (sink, stream) = duplex.split();
-                sink.send(outgoing_message)
-                    .and_then(|sink|
-                              stream.filter_map(|incoming_message| {
-                                  match incoming_message {
-                                      OwnedMessage::Close(e) => Some(OwnedMessage::Close(e)),
-                                      OwnedMessage::Ping(d) => Some(OwnedMessage::Pong(d)),
-                                      OwnedMessage::Binary(packet) => {
-                                          // TODO return fulfillment or implement fulfillment event
-                                          // that the SPSP module can listen for
-                                          match self.handle_incoming(packet) {
-                                              Ok(response) => Some(OwnedMessage::from(Message::binary(response))),
-                                              Err(_error) => None,
-                                          }
-                                      },
-                                      _ => None,
-                                  }
-                              })
-                              .forward(sink)
-                              )
-            });
-        core.run(runner).unwrap();
-        Ok(())
-    }
+        };
+        let outgoing_message = OwnedMessage::from(Message::binary(outgoing_packet.to_bytes()?));
+        // TODO use ? instead of unwrap
+        let mut ws = ClientBuilder::new(&self.server).unwrap().connect(None).unwrap();
+        ws.send_message(&outgoing_message).unwrap();
 
-    // TODO match requests and responses
-    fn handle_incoming(&mut self, packet: Vec<u8>) -> Result<Vec<u8>, Error> {
-        let packet = BtpPacket::from_bytes(&packet)?;
-        match packet.data {
-            PacketContents::Message(message) => Err(Error::Misc("Not really an error but don't need to respond for this type")),
-            PacketContents::Fulfill(fulfill) => {
-                println!("got fulfillment {:?}", fulfill);
-                Err(Error::Misc("blah"))
-            },
-            _ => Err(Error::Misc("No handler implemented yet for this packet type")),
-        }
+        // Parse incoming messages looking either for an error response or a fulfill
+        for message in ws.incoming_messages() {
+            match message {
+                Ok(OwnedMessage::Close(_err)) => return Err(Error::Misc("server closed websocket")),
+                Ok(OwnedMessage::Binary(ref packet)) => {
+                    let packet = BtpPacket::from_bytes(packet)?;
+                    match packet.data {
+                        PacketContents::ErrorResponse(err) => {
+                            // TODO how do we include a dynamically created error message?
+                            // (when using format! it complains that the constructed string doesn't
+                            // live long enough)
+                            if packet.request_id == outgoing_packet.request_id {
+                                println!("got error message: {:?}", err);
+                                return Err(Error::Misc("got error response from peer"));
+                            }
+                        },
+                        PacketContents::Fulfill(fulfill) => {
+                            if fulfill.transfer_id == transfer.id {
+                                // TODO verify fulfillment matches
+                                println!("got fulfillment {:?}", fulfill);
+                                return Ok(fulfill.fulfillment);
+                            }
+                        },
+                        _ => {
+                            println!("got packet other than a fulfill");
+                        },
+                    };
+                },
+                Err(err) => {
+                    println!("got error listening for incoming messages: {:?}", err);
+                    return Err(Error::Misc("unknown websocket error"));
+                },
+                // TODO handle ping and pong
+                _ => {},
+            };
+        };
+
+        // We shouldn't get here
+        Err(Error::Misc("did not receive fulfillment"))
     }
 }
