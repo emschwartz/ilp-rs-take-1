@@ -20,7 +20,7 @@ cargo build --release
 
 (From the `ilp-rs` directory)
 ```sh
-./target/release/ilp pay --source_amount=10 --destination_amount=10 http://localhost:3000
+./target/release/ilp pay --btp_server=btp+ws://user:token@localhost:8080 --source_amount=10 --destination_amount=10 http://localhost:3000
 ```
 
 ## Library Usage
@@ -34,7 +34,7 @@ cargo build --release
 - [x] Implementation of ILP
 - [x] Implementation of BTP for sending transfers and receiving fulfillments
 - [x] Properly return fulfillments from plugin
-- [ ] Make BTP server configurable through CLI (or config file?)
+- [x] Make BTP server configurable through CLI (or config file?)
 - [ ] Add incoming event stream that parses messages
 - [ ] Add async prepare function (that doesn't wait for the fulfill)
 - [ ] Implement ILQP

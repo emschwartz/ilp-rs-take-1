@@ -67,7 +67,7 @@ fn int_to_float(amount: u64, scale: i32) -> f64 {
     amount as f64 * 10.0_f64.powi(0 - scale)
 }
 
-pub fn quote_source(receiver: &str, source_amount: f64) -> Result<f64, Error> {
+pub fn quote_source(btp_server: &str, receiver: &str, source_amount: f64) -> Result<f64, Error> {
     let spsp_details = query(receiver)?;
     let destination_account = spsp_details.destination_account;
     // TODO shift by scale from ledger plugin
@@ -79,7 +79,7 @@ pub fn quote_source(receiver: &str, source_amount: f64) -> Result<f64, Error> {
     Ok(destination_amount)
 }
 
-pub fn quote_destination(receiver: &str, destination_amount: f64) -> Result<f64, Error> {
+pub fn quote_destination(btp_server: &str, receiver: &str, destination_amount: f64) -> Result<f64, Error> {
     let spsp_details = query(receiver)?;
     let destination_account = spsp_details.destination_account;
     let destination_amount = float_to_int(destination_amount, spsp_details.ledger_info.currency_scale);
@@ -90,7 +90,7 @@ pub fn quote_destination(receiver: &str, destination_amount: f64) -> Result<f64,
     Ok(int_to_float(source_amount, source_scale))
 }
 
-pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> Result<(), Error> {
+pub fn pay(btp_server: &str, receiver: &str, source_amount: f64, destination_amount: f64) -> Result<(), Error> {
     println!("Send payment to {} with source amount {} and destination amount {}", receiver, source_amount, destination_amount);
     let spsp_details = query(receiver)?;
     println!("Got receiver details: {:?}", spsp_details);
@@ -119,7 +119,7 @@ pub fn pay(receiver: &str, source_amount: f64, destination_amount: f64) -> Resul
     println!("Sending transfer: {}", serde_json::to_string(&transfer).unwrap());
 
     // TODO don't hardcode websocket uri
-    let mut plugin = Plugin::new("ws://localhost:8080".to_string());
+    let mut plugin = Plugin::new(btp_server).unwrap();
     plugin.prepare_and_wait_for_fulfill_sync(transfer)
         .map(|fulfillment| ())
         .map_err(|err| Error::from(err))

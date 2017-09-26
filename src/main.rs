@@ -14,6 +14,8 @@ extern crate byteorder;
 extern crate futures;
 extern crate websocket;
 extern crate tokio_core;
+extern crate regex;
+#[macro_use] extern crate lazy_static;
 
 use clap::{App, SubCommand, Arg};
 
@@ -31,6 +33,10 @@ fn main() {
         .about("Command line sending client for ILP/SPSP")
         .subcommand(SubCommand::with_name("quote")
                     .about("Get a quote")
+                    .arg(Arg::with_name("btp_server")
+                         .takes_value(true)
+                         .long("btp_server")
+                         .required(true))
                     .arg(Arg::with_name("source_amount")
                          .takes_value(true)
                          .long("source_amount")
@@ -46,6 +52,10 @@ fn main() {
                         .required(true)))
         .subcommand(SubCommand::with_name("pay")
                     .about("Send a payment")
+                    .arg(Arg::with_name("btp_server")
+                         .takes_value(true)
+                         .long("btp_server")
+                         .required(true))
                     .arg(Arg::with_name("source_amount")
                          .takes_value(true)
                          .long("source_amount")
@@ -62,22 +72,24 @@ fn main() {
         Some("quote") => {
             let matches = matches.subcommand_matches("quote").unwrap();
             let receiver = matches.value_of("receiver").unwrap();
+            let btp_server = matches.value_of("btp_server").unwrap();
             if matches.is_present("source_amount") {
                 let source_amount: f64 = matches.value_of("source_amount").unwrap().parse().unwrap();
-                let destination_amount = spsp::quote_source(receiver, source_amount);
+                let destination_amount = spsp::quote_source(btp_server, receiver, source_amount);
                 println!("{}", destination_amount.unwrap())
             } else {
                 let destination_amount: f64 = matches.value_of("destination_amount").unwrap().parse().unwrap();
-                let source_amount = spsp::quote_destination(receiver, destination_amount);
+                let source_amount = spsp::quote_destination(btp_server, receiver, destination_amount);
                 println!("{}", source_amount.unwrap())
             }
         },
         Some("pay") => {
             let matches = matches.subcommand_matches("pay").unwrap();
             let receiver = matches.value_of("receiver").unwrap();
+            let btp_server = matches.value_of("btp_server").unwrap();
             let source_amount: f64 = matches.value_of("source_amount").unwrap().parse().unwrap();
             let destination_amount: f64 = matches.value_of("destination_amount").unwrap().parse().unwrap();
-            match spsp::pay(receiver, source_amount, destination_amount) {
+            match spsp::pay(btp_server, receiver, source_amount, destination_amount) {
                 Ok(_result) => println!("Sent payment"),
                 Err(err) => println!("Error sending payment: {:?}", err),
             }

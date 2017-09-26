@@ -11,6 +11,9 @@ use futures::future::Future;
 use futures::{Stream, Sink};
 use websocket::result::WebSocketError;
 use websocket::{ClientBuilder, OwnedMessage, Message};
+use regex::Regex;
+
+const BTP_REGEX_STRING: &'static str = r"^btp\+(?P<protocol>ws|wss)://(?:(?P<username>\S+)(?::(?P<token>\S+))?@)?(?P<host>\S+)$";
 
 // TODO turn plugin interface into trait
 
@@ -35,6 +38,9 @@ quick_error! {
         DateTimeParse(err: ChronoError) {
             description(err.description())
             from()
+        }
+        InvalidParameter(descr: &'static str) {
+            description(descr)
         }
         Misc(descr: &'static str) {
             description(descr)
@@ -76,13 +82,24 @@ fn as_base64<T, S>(buffer: &T, serializer: S) -> Result<S::Ok, S::Error>
 }
 
 pub struct Plugin {
-    server: String,
+    ws_uri: String,
+    username: String,
+    token: String,
 }
 
 impl Plugin {
-    pub fn new(server: String) -> Self {
-        Plugin {
-            server: server,
+    pub fn new(server: &str) -> Result<Self, Error> {
+        lazy_static! {
+            static ref BTP_REGEX: Regex = Regex::new(BTP_REGEX_STRING).unwrap();
+        }
+        // TODO handle unsupported protocols and invalid btp_server strings
+        match BTP_REGEX.captures(server) {
+            Some(ref captures) => Ok(Plugin {
+                ws_uri: format!("{}://{}", &captures["protocol"], &captures["host"]),
+                username: captures.name("username").map(|s| s.as_str()).unwrap_or("").to_string(),
+                token: captures.name("token").map(|s| s.as_str()).unwrap_or("").to_string(),
+            }),
+            None => Err(Error::InvalidParameter("btp_server must be of the form btp+wss://username:token@host.example")),
         }
     }
 
@@ -109,7 +126,7 @@ impl Plugin {
         };
         let outgoing_message = OwnedMessage::from(Message::binary(outgoing_packet.to_bytes()?));
         // TODO use ? instead of unwrap
-        let mut ws = ClientBuilder::new(&self.server).unwrap().connect(None).unwrap();
+        let mut ws = ClientBuilder::new(&self.ws_uri).unwrap().connect(None).unwrap();
         ws.send_message(&outgoing_message).unwrap();
 
         // Parse incoming messages looking either for an error response or a fulfill
